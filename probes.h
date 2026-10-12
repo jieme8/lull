@@ -38,7 +38,12 @@ BOOL ProbeHasFullscreenRegularWindow(void);
 /// 用来验证"hide/activate 到底生效没有"—— 只看事实，不信返回值。
 NSInteger ProbeWindowsOwnedBy(NSString *bundleID);
 
-/// 供 --doctor / 回归测试使用：把快照渲染成一行人读文本
+/// 已经 hidden=1、但屏上仍挂着普通层窗口的 App 名。
+/// 这类"抗隐藏"窗口（Tauri/webview 常见）不是我们的 bug：hide 确实生效了，
+/// 是那个 App 自己不让窗口走。unhide 再 hide 也按不住，只有原生"显示桌面"能移开。
+NSArray<NSString *> *ProbeStubbornAppNames(void);
+
+/// 供体检使用：把快照渲染成一行人读文本
 NSString *ProbeSnapshotDescription(ProbeSnapshot *snap);
 
 NS_ASSUME_NONNULL_END

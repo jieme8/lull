@@ -149,6 +149,22 @@ NSInteger ProbeWindowsOwnedBy(NSString *bundleID) {
     return n;
 }
 
+NSArray<NSString *> *ProbeStubbornAppNames(void) {
+    NSMutableSet<NSString *> *names = [NSMutableSet set];
+    CFArrayRef wins = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly, kCGNullWindowID);
+    for (CFIndex i = 0; wins && i < CFArrayGetCount(wins); i++) {
+        CFDictionaryRef w = CFArrayGetValueAtIndex(wins, i);
+        if (NumField(w, kCGWindowLayer) != 0) continue;
+        NSRunningApplication *a = OwnerOf(w);
+        if (!a || a.activationPolicy != NSApplicationActivationPolicyRegular) continue;
+        if (IsFinder(a)) continue;
+        if (!a.isHidden) continue;     // 只挑"已经隐藏了却还占着屏"的
+        [names addObject:(a.localizedName ?: a.bundleIdentifier ?: @"?")];
+    }
+    if (wins) CFRelease(wins);
+    return [names.allObjects sortedArrayUsingSelector:@selector(compare:)];
+}
+
 BOOL ProbeHasFullscreenRegularWindow(void) {
     uint32_t dcount = 0;
     uint32_t *dids = ActiveDisplayList(&dcount);

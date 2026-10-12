@@ -44,6 +44,7 @@ static const NSTimeInterval POLL_INTERVAL = 3.0;   // 轮询间隔 → 触发精
 @property(strong) NSString *lastSkipReason;
 @property(assign) double lastIdle;
 @property(strong) NSDate *guidanceShownAt;   // 授权引导弹窗的节流时间
+@property(strong) NSDate *startedAt;       // 体检警告的静默期基准
 @property(strong) HotKeyManager *hotKeys;
 @property(strong) HotKeyWindowController *hotKeyWindow;
 + (void)registerDefaults;
@@ -85,6 +86,7 @@ static const NSTimeInterval POLL_INTERVAL = 3.0;   // 轮询间隔 → 触发精
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification *)note {
+    self.startedAt = [NSDate date];
     [[self class] registerDefaults];
     [self setupStatusItem];
 
@@ -172,6 +174,9 @@ static const NSTimeInterval POLL_INTERVAL = 3.0;   // 轮询间隔 → 触发精
 - (double)threshold      { return MAX(5.0, [[NSUserDefaults standardUserDefaults] doubleForKey:KEY_THRESHOLD]); }
 /// 冷却随阈值缩放：固定 25 秒会让"5 秒阈值"形同虚设（触发一次后要等 25 秒才可能再触发）
 - (NSTimeInterval)cooldown { return MIN(25.0, MAX(2.0, [self threshold] * 0.5)); }
+/// 体检里的"从未收到按键"警告只在运行 10 分钟后才说 —— 重启会把计数清零，刚启动就报警是废话
+- (NSTimeInterval)uptime { return -[self.startedAt timeIntervalSinceNow]; }
+
 - (DesktopRevealMode)desktopMode {
     return (DesktopRevealMode)[[NSUserDefaults standardUserDefaults] integerForKey:KEY_DESKTOP_MODE];
 }
@@ -330,9 +335,15 @@ static const NSTimeInterval POLL_INTERVAL = 3.0;   // 轮询间隔 → 触发精
 /// 桌面到底露出来没有 —— 只认 probes 观测到的事实，不看任何 API 返回值
 - (NSString *)desktopVerdict {
     ProbeSnapshot *s = ProbeWindows();
+    NSArray<NSString *> *stubborn = ProbeStubbornAppNames();   // 已 hidden 但窗口赖着不走的
     if (s.regularWindows > 0) {
-        return [NSString stringWithFormat:@"  ✗ 仍有 %ld 个窗口未收起（%@）",
-                (long)s.regularWindows, [s.regularAppNames componentsJoinedByString:@"、"]];
+        NSMutableString *msg = [NSMutableString stringWithFormat:@"  ✗ 仍有 %ld 个窗口未收起（%@）",
+                                (long)s.regularWindows, [s.regularAppNames componentsJoinedByString:@"、"]];
+        if (stubborn.count)
+            [msg appendFormat:@"\n    %@：已 hide 成功，是它自己不让窗口走（unhide 再 hide 也按不住）"
+                              " —— 这类抗隐藏窗口只有原生「显示桌面」能移开",
+             [stubborn componentsJoinedByString:@"、"]];
+        return msg;
     }
     NSMutableString *msg = [NSMutableString stringWithString:@"  ✓ 桌面已露出"];
     if (s.finderWindows) [msg appendFormat:@"（访达剩 %ld 个窗口：系统必须留一个前台 App）", (long)s.finderWindows];
@@ -416,6 +427,8 @@ static NSString *DoctorReportPath(void) {
          pathOK ? @"OK" : (bidOK ? @"已失效(可自愈)" : @"✗ 找不到"), bidOK ? @"OK" : @"✗"];
     }
     [r appendFormat:@"窗口快照：%@\n", ProbeSnapshotDescription(snap)];
+    NSArray<NSString *> *stubborn = ProbeStubbornAppNames();
+    if (stubborn.count) [r appendFormat:@"抗隐藏残留：%@\n", [stubborn componentsJoinedByString:@"、"]];
 
     NSMutableArray<NSString *> *warn = [NSMutableArray array];
     if ([self desktopMode] == DesktopRevealModeNative && !trusted)
@@ -423,12 +436,15 @@ static NSString *DoctorReportPath(void) {
     for (HotKeyItem *it in self.hotKeys.items) {
         if (![it isConfigured]) { [warn addObject:[NSString stringWithFormat:@"%@ 还没设组合键", it.name]]; continue; }
         if (it.registerFailed) [warn addObject:[NSString stringWithFormat:@"%@ 的 %@ 注册失败", it.name, it.comboString]];
-        else if (!it.fireCount && !self.hotKeys.isSuspended)
+        else if (!it.fireCount && !self.hotKeys.isSuspended && [self uptime] > 600)
             [warn addObject:[NSString stringWithFormat:@"%@ 的 %@ 本次启动后还没收到过按键（重启会清零；"
                                                        @"若你确实按过，就是组合键被别的程序占了 —— Carbon 不报冲突）",
                                                     it.name, it.comboString]];
     }
     if (snap.regularWindows == 0 && !snap.desktopLayerAlive) [warn addObject:@"桌面图标层消失 = 藏过头了"];
+    if (stubborn.count)
+        [warn addObject:[NSString stringWithFormat:@"%@ 抗隐藏（hide 成功但窗口不走）→ 用原生显示桌面才能移开",
+                                          [stubborn componentsJoinedByString:@"、"]]];
 
     [r appendString:warn.count
         ? [NSString stringWithFormat:@"自检结论：\n  ⚠ %@\n", [warn componentsJoinedByString:@"\n  ⚠ "]]
