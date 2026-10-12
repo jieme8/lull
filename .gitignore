@@ -1,0 +1,15 @@
+# 构建产物（可由 ./build.sh 重新生成）
+build/
+
+# 图标预览图（./build.sh --tools 与 make_icon --preview 可重生成）
+appicon_preview.png
+icon_sizes.png
+final_icon.png
+icons_sheet.png
+
+# macOS / 编辑器
+.DS_Store
+*.log
+.vscode/
+.idea/
+tags
