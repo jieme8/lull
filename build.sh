@@ -12,7 +12,7 @@ APP_NAME="Lull"
 BUILD_DIR="build"
 # 构建暂存放在临时目录：项目目录里的 .app 会被 Spotlight 索引并被 LaunchServices 注册，
 # Launchpad 里就会多出第二个 Lull.app
-STAGE_ROOT="${TMPDIR:-/tmp}/idle-desktop-stage"
+STAGE_ROOT="${TMPDIR:-/tmp}/lull-stage"
 APP="$STAGE_ROOT/$APP_NAME.app"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/Applications}"
 LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister
